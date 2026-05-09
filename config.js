@@ -4,7 +4,7 @@
 // ============================================================
 
 const CONFIG = {
-  API_URL:      'https://script.google.com/macros/s/AKfycbzYCUYVHQbI4O4of_kwzLoIow5momVaac8BeMxlzOq09D4jciUg4PE0Uz7irn9UQVQw/exec' // ← ใส่ URL ของคุณ
+  API_URL:      'https://script.google.com/macros/s/AKfycbyvaq8Tih6xvUmGWZ_IUG1SAymkP1u2fSm_CsrSHNAIPkFxWetnzwJN7KW_MK7YnsXCeA/exec',
   APP_NAME:     'Employee Check-In System',
   COMPANY_NAME: 'Flexmart Inter'  // ← เปลี่ยนชื่อบริษัท
 };
