@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - ระบบเช็คอิน</title>
+  <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; min-height: 100vh; }
+
+    .header { background: linear-gradient(135deg, #0d47a1, #1565c0); color: white; padding: 20px; text-align: center; }
+    .header h1 { font-size: 1.3rem; }
+
+    .tabs { display: flex; background: white; border-bottom: 2px solid #e0e0e0; overflow-x: auto; }
+    .tab {
+      padding: 14px 20px; cursor: pointer; font-size: 0.9rem;
+      color: #666; border-bottom: 3px solid transparent; white-space: nowrap; transition: all 0.2s;
+    }
+    .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; font-weight: 600; }
+
+    .tab-content { display: none; padding: 20px; max-width: 600px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    .card { background: white; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .card h2 { font-size: 1rem; color: #333; margin-bottom: 16px; }
+
+    input, select {
+      width: 100%; padding: 12px; border: 2px solid #e0e0e0;
+      border-radius: 10px; font-size: 0.95rem; margin-bottom: 10px;
+    }
+    input:focus, select:focus { outline: none; border-color: #1a73e8; }
+
+    .btn { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .btn-primary   { background: #1a73e8; color: white; }
+    .btn-success   { background: #34a853; color: white; }
+    .btn-danger    { background: #ea4335; color: white; }
+    .btn-sm        { width: auto; padding: 6px 14px; font-size: 0.8rem; border-radius: 6px; }
+
+    .qr-container { text-align: center; padding: 20px; background: white; border-radius: 16px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    #qr-output { display: inline-block; margin: 16px auto; }
+    .qr-label    { font-size: 1.1rem; font-weight: 600; color: #333; margin-top: 8px; }
+    .qr-sublabel { font-size: 0.8rem; color: #888; margin-top: 4px; }
+
+    .list-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid #f0f0f0; }
+    .list-item:last-child { border-bottom: none; }
+    .list-item-info p      { font-size: 0.85rem; color: #888; margin-top: 2px; }
+    .list-item-info strong { color: #333; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { background: #1a73e8; color: white; padding: 10px 8px; text-align: left; }
+    td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+    tr:hover td { background: #f8f9ff; }
+
+    .badge     { padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+    .badge-in  { background: #e8f5e9; color: #2e7d32; }
+    .badge-out { background: #fce4ec; color: #c62828; }
+
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .summary-card { background: white; border-radius: 12px; padding: 16px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .summary-card .number { font-size: 2rem; font-weight: 700; color: #1a73e8; }
+    .summary-card .label  { font-size: 0.8rem; color: #888; margin-top: 4px; }
+
+    .photo-thumb { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; cursor: pointer; }
+
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 999; align-items: center; justify-content: center; }
+    .modal.show { display: flex; }
+    .modal img  { max-width: 90vw; max-height: 80vh; border-radius: 12px; }
+
+    .filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .filter-row input, .filter-row select { margin-bottom: 0; flex: 1; }
+
+    .empty { text-align: center; padding: 30px; color: #aaa; }
+
+    .login-overlay { position: fixed; inset: 0; background: #f0f4f8; display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .login-box { background: white; padding: 32px; border-radius: 20px; width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); text-align: center; }
+    .login-box h2 { margin-bottom: 20px; color: #333; }
+  </style>
+</head>
+<body>
+
+<!-- Login -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <div style="font-size:3rem">🔐</div>
+    <h2>Admin Login</h2>
+    <input type="password" id="admin-pass" placeholder="รหัสผ่าน Admin"
+      onkeydown="if(event.key==='Enter') adminLogin()">
+    <button class="btn btn-primary" onclick="adminLogin()" style="margin-top:8px">เข้าสู่ระบบ</button>
+    <p id="login-error" style="color:#ea4335; margin-top:10px; font-size:0.85rem"></p>
+  </div>
+</div>
+
+<!-- Photo Modal -->
+<div class="modal" id="photo-modal" onclick="this.classList.remove('show')">
+  <img id="modal-img" src="">
+</div>
+
+<div class="header">
+  <h1>⚙️ Admin Panel - ระบบเช็คอิน</h1>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('tab-qr', this)">📍 QR Code</div>
+  <div class="tab"        onclick="switchTab('tab-employees', this)">👥 พนักงาน</div>
+  <div class="tab"        onclick="switchTab('tab-report', this)">📊 รายงาน</div>
+</div>
+
+<!-- ── TAB: QR CODE ── -->
+<div class="tab-content active" id="tab-qr">
+  <div class="card">
+    <h2>➕ สร้าง QR Code สถานที่ใหม่</h2>
+    <input type="text" id="loc-id"   placeholder="รหัสสถานที่ เช่น L001">
+    <input type="text" id="loc-name" placeholder="ชื่อสถานที่ เช่น สำนักงานใหญ่">
+    <input type="text" id="loc-desc" placeholder="คำอธิบาย (ไม่บังคับ)">
+    <button class="btn btn-primary" onclick="generateQR()">🔲 สร้าง QR Code</button>
+  </div>
+
+  <div class="qr-container" id="qr-result-box" style="display:none">
+    <div id="qr-output"></div>
+    <p class="qr-label"    id="qr-name-label"></p>
+    <p class="qr-sublabel" id="qr-id-label"></p>
+    <div style="display:flex; gap:8px; justify-content:center; margin-top:16px">
+      <button class="btn btn-success btn-sm" onclick="downloadQR()">⬇️ ดาวน์โหลด</button>
+      <button class="btn btn-primary btn-sm" onclick="saveLocation()">💾 บันทึกสถานที่</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📍 สถานที่ทั้งหมด</h2>
+    <div id="location-list"><div class="empty">⏳ กำลังโหลด...</div></div>
+  </div>
+</div>
+
+<!-- ── TAB: EMPLOYEES ── -->
+<div class="tab-content" id="tab-employees">
+  <div class="card">
+    <h2>➕ เพิ่มพนักงานใหม่</h2>
+    <input type="text"     id="new-emp-id"   placeholder="รหัสพนักงาน เช่น EMP001">
+    <input type="text"     id="new-emp-name" placeholder="ชื่อ-นามสกุล">
+    <input type="text"     id="new-emp-dept" placeholder="แผนก">
+    <input type="password" id="new-emp-pin"  placeholder="PIN 4 หลัก" maxlength="4" inputmode="numeric">
+    <button class="btn btn-success" onclick="addEmployee()">➕ เพิ่มพนักงาน</button>
+  </div>
+  <div class="card">
+    <h2>👥 พนักงานทั้งหมด</h2>
+    <div id="employee-list"><div class="empty">⏳ กำลังโหลด...</div></div>
+  </div>
+</div>
+
+<!-- ── TAB: REPORT ── -->
+<div class="tab-content" id="tab-report">
+  <div class="summary-grid">
+    <div class="summary-card"><div class="number" id="stat-checkin">-</div><div class="label">เช็คอินวันนี้</div></div>
+    <div class="summary-card"><div class="number" id="stat-checkout">-</div><div class="label">เช็คเอาท์วันนี้</div></div>
+    <div class="summary-card"><div class="number" id="stat-total">-</div><div class="label">รายการทั้งหมด</div></div>
+    <div class="summary-card"><div class="number" id="stat-locations">-</div><div class="label">สถานที่ใช้งาน</div></div>
+  </div>
+  <div class="card">
+    <h2>🔍 ค้นหา / กรอง</h2>
+    <div class="filter-row">
+      <input type="date" id="filter-date">
+      <input type="text" id="filter-name" placeholder="ชื่อพนักงาน">
+    </div>
+    <button class="btn btn-primary" onclick="loadReport()">🔍 ค้นหา</button>
+  </div>
+  <div class="card">
+    <h2>📋 รายการเช็คอิน</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>รูป</th><th>พนักงาน</th><th>สถานที่</th><th>ประเภท</th><th>เวลา</th><th>GPS</th></tr>
+        </thead>
+        <tbody id="report-table">
+          <tr><td colspan="6" class="empty">⏳ กำลังโหลด...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const ADMIN_PASSWORD = 'admin1234'; // ← เปลี่ยนรหัสผ่านตรงนี้
+  let currentQRData = null;
+
+  // ── LOGIN ────────────────────────────────────
+  function adminLogin() {
+    if (document.getElementById('admin-pass').value === ADMIN_PASSWORD) {
+      document.getElementById('login-overlay').style.display = 'none';
+      initAdmin();
+    } else {
+      document.getElementById('login-error').textContent = '❌ รหัสผ่านไม่ถูกต้อง';
+    }
+  }
+
+  function initAdmin() {
+    document.getElementById('filter-date').value = new Date().toISOString().split('T')[0];
+    loadLocations(); loadEmployees(); loadReport();
+  }
+
+  // ── TABS ─────────────────────────────────────
+  function switchTab(tabId, el) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    el.classList.add('active');
+  }
+
+  // ── QR ───────────────────────────────────────
+  function generateQR() {
+    const locId   = document.getElementById('loc-id').value.trim();
+    const locName = document.getElementById('loc-name').value.trim();
+    if (!locId || !locName) { alert('กรุณากรอกรหัสและชื่อสถานที่'); return; }
+
+    currentQRData = { id: locId, name: locName, desc: document.getElementById('loc-desc').value };
+    document.getElementById('qr-output').innerHTML = '';
+
+    new QRCode(document.getElementById('qr-output'), {
+      text: JSON.stringify({ locationId: locId, locationName: locName }),
+      width: 220, height: 220,
+      colorDark: '#000000', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+
+    document.getElementById('qr-name-label').textContent = locName;
+    document.getElementById('qr-id-label').textContent   = 'รหัส: ' + locId;
+    document.getElementById('qr-result-box').style.display = 'block';
+  }
+
+  function downloadQR() {
+    setTimeout(() => {
+      const canvas = document.querySelector('#qr-output canvas');
+      if (!canvas) { alert('กรุณาสร้าง QR ก่อน'); return; }
+
+      const newCanvas = document.createElement('canvas');
+      newCanvas.width = 280; newCanvas.height = 320;
+      const ctx = newCanvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 280, 320);
+      ctx.drawImage(canvas, 30, 20, 220, 220);
+      ctx.fillStyle = '#333'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(currentQRData.name, 140, 268);
+      ctx.fillStyle = '#888'; ctx.font = '12px sans-serif';
+      ctx.fillText('รหัส: ' + currentQRData.id, 140, 290);
+
+      const link = document.createElement('a');
+      link.download = 'QR_' + currentQRData.id + '_' + currentQRData.name + '.png';
+      link.href = newCanvas.toDataURL();
+      link.click();
+    }, 200);
+  }
+
+  async function saveLocation() {
+    if (!currentQRData) return;
+    const res = await apiPost({ action: 'addLocation', locationId: currentQRData.id, locationName: currentQRData.name, description: currentQRData.desc });
+    if (res.success) { alert('✅ บันทึกสถานที่สำเร็จ'); loadLocations(); }
+    else alert('❌ ' + res.message);
+  }
+
+  async function loadLocations() {
+    const res  = await apiGet('getLocations');
+    const list = document.getElementById('location-list');
+    if (!res.success || !res.locations.length) { list.innerHTML = '<div class="empty">ยังไม่มีสถานที่</div>'; return; }
+    list.innerHTML = res.locations.map(loc => `
+      <div class="list-item">
+        <div class="list-item-info">
+          <strong>📍 ${loc.name}</strong>
+          <p>รหัส: ${loc.id}${loc.description ? ' · ' + loc.description : ''}</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="regenQR('${loc.id}','${loc.name}')">QR</button>
+      </div>`).join('');
+  }
+
+  function regenQR(id, name) {
+    document.getElementById('loc-id').value   = id;
+    document.getElementById('loc-name').value = name;
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-qr').classList.add('active');
+    document.querySelector('.tab').classList.add('active');
+    generateQR(); window.scrollTo(0, 0);
+  }
+
+  // ── EMPLOYEES ────────────────────────────────
+  async function addEmployee() {
+    const empId = document.getElementById('new-emp-id').value.trim();
+    const name  = document.getElementById('new-emp-name').value.trim();
+    const dept  = document.getElementById('new-emp-dept').value.trim();
+    const pin   = document.getElementById('new-emp-pin').value.trim();
+    if (!empId || !name || !pin) { alert('กรุณากรอกข้อมูลให้ครบ'); return; }
+    if (pin.length !== 4) { alert('PIN ต้องเป็น 4 หลัก'); return; }
+
+    const res = await apiPost({ action: 'addEmployee', employeeId: empId, name, department: dept, pin });
+    if (res.success) {
+      alert('✅ เพิ่มพนักงานสำเร็จ');
+      ['new-emp-id','new-emp-name','new-emp-dept','new-emp-pin'].forEach(id => document.getElementById(id).value = '');
+      loadEmployees();
+    } else alert('❌ ' + res.message);
+  }
+
+  async function loadEmployees() {
+    const res  = await apiGet('getEmployees');
+    const list = document.getElementById('employee-list');
+    if (!res.success || !res.employees.length) { list.innerHTML = '<div class="empty">ยังไม่มีพนักงาน</div>'; return; }
+    list.innerHTML = res.employees.map((emp, i) => `
+      <div class="list-item">
+        <div class="list-item-info">
+          <strong>👤 ${emp.name}</strong>
+          <p>รหัส: ${emp.id} · ${emp.department || 'ไม่ระบุแผนก'}</p>
+        </div>
+        <span style="font-size:0.75rem;color:#aaa">#${i+1}</span>
+      </div>`).join('');
+  }
+
+  // ── REPORT ───────────────────────────────────
+  async function loadReport() {
+    const res = await apiGet('getReport');
+    if (!res.success) { updateStats([]); return; }
+
+    let records = res.records;
+    const filterDate = document.getElementById('filter-date').value;
+    const filterName = document.getElementById('filter-name').value.toLowerCase();
+
+    if (filterDate) records = records.filter(r => r.timestamp && new Date(r.timestamp).toISOString().startsWith(filterDate));
+    if (filterName) records = records.filter(r => r.employeeName.toLowerCase().includes(filterName));
+
+    updateStats(records);
+    const tbody = document.getElementById('report-table');
+
+    if (!records.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">ไม่มีข้อมูล</td></tr>'; return; }
+
+    tbody.innerHTML = [...records].reverse().map(r => {
+      const time  = r.timestamp ? new Date(r.timestamp).toLocaleString('th-TH') : '-';
+      const gps   = r.latitude  ? `${parseFloat(r.latitude).toFixed(4)}, ${parseFloat(r.longitude).toFixed(4)}` : '-';
+      const badge = r.action === 'checkin'
+        ? '<span class="badge badge-in">เข้างาน</span>'
+        : '<span class="badge badge-out">ออกงาน</span>';
+      const photo = r.photoUrl
+        ? `<img src="${r.photoUrl}" class="photo-thumb" onclick="showPhoto('${r.photoUrl}')">`
+        : '—';
+      return `<tr>
+        <td>${photo}</td>
+        <td><strong>${r.employeeName}</strong><br><small style="color:#aaa">${r.employeeId}</small></td>
+        <td>${r.locationName || '-'}</td>
+        <td>${badge}</td>
+        <td style="font-size:0.78rem">${time}</td>
+        <td style="font-size:0.75rem;color:#888">${gps}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function updateStats(records) {
+    const today = new Date().toISOString().split('T')[0];
+    const todayRec = records.filter(r => r.timestamp && new Date(r.timestamp).toISOString().startsWith(today));
+    document.getElementById('stat-checkin').textContent   = todayRec.filter(r => r.action === 'checkin').length;
+    document.getElementById('stat-checkout').textContent  = todayRec.filter(r => r.action === 'checkout').length;
+    document.getElementById('stat-total').textContent     = records.length;
+    document.getElementById('stat-locations').textContent = new Set(records.map(r => r.locationId)).size;
+  }
+
+  function showPhoto(url) {
+    document.getElementById('modal-img').src = url;
+    document.getElementById('photo-modal').classList.add('show');
+  }
+
+  // ── API HELPERS ──────────────────────────────
+  async function apiPost(data) {
+    try {
+      const res = await fetch(CONFIG.API_URL, { method: 'POST', body: JSON.stringify(data) });
+      return await res.json();
+    } catch(e) { return { success: false, message: e.toString() }; }
+  }
+
+  async function apiGet(action) {
+    try {
+      const res = await fetch(`${CONFIG.API_URL}?action=${action}`);
+      return await res.json();
+    } catch(e) { return { success: false, message: e.toString() }; }
+  }
+</script>
+</body>
+</html>
