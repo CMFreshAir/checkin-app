@@ -4,8 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>เช็คอิน พนักงาน</title>
-  <script src="config.js"></script>
+
+  <!-- ✅ CONFIG inline ป้องกัน ReferenceError: Can't find variable: CONFIG -->
+  <script>
+    const CONFIG = {
+      API_URL: 'https://script.google.com/macros/s/AKfycbyvaq8Tih6xvUmGWZ_IUG1SAymkP1u2fSm_CsrSHNAIPkFxWetnzwJN7KW_MK7YnsXCeA/exec',
+      APP_NAME: 'Employee Check-In System',
+      COMPANY_NAME: 'FlexMart Inter'  // ← เปลี่ยนชื่อบริษัทได้ตรงนี้
+    };
+  </script>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; min-height: 100vh; }
@@ -35,6 +45,347 @@
 
     input {
       width: 100%; padding: 14px;
+      border: 2px solid #e0e0e0; border-radius: 10px;
+      font-size: 1rem; margin-bottom: 12px; transition: border-color 0.2s;
+    }
+    input:focus { outline: none; border-color: #1a73e8; }
+
+    .btn {
+      width: 100%; padding: 15px; border: none;
+      border-radius: 10px; font-size: 1rem;
+      font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary   { background: #1a73e8; color: white; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-success   { background: #34a853; color: white; }
+    .btn-danger    { background: #ea4335; color: white; }
+    .btn-secondary { background: #f1f3f4; color: #333; }
+    .btn:disabled  { opacity: 0.6; cursor: not-allowed; }
+
+    #qr-reader { width: 100%; border-radius: 12px; overflow: hidden; }
+    #qr-reader video { border-radius: 12px; }
+
+    #selfie-preview {
+      width: 100%; border-radius: 12px;
+      background: #000; min-height: 240px; object-fit: cover;
+    }
+    #selfie-canvas { display: none; }
+
+    .status-box { padding: 16px; border-radius: 10px; text-align: center; margin-bottom: 12px; }
+    .status-success { background: #e8f5e9; color: #2e7d32; }
+    .status-error   { background: #fce4ec; color: #c62828; }
+
+    .location-badge {
+      background: #e8f0fe; color: #1a73e8;
+      padding: 8px 14px; border-radius: 20px;
+      font-size: 0.9rem; display: inline-block; margin-bottom: 12px;
+    }
+
+    .employee-info {
+      background: #f8f9fa; border-radius: 10px;
+      padding: 14px; margin-bottom: 12px;
+    }
+    .employee-info p      { font-size: 0.9rem; color: #555; margin-bottom: 4px; }
+    .employee-info strong { color: #333; font-size: 1rem; }
+
+    .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+
+    .gps-status { font-size: 0.8rem; color: #888; text-align: center; margin-top: 8px; }
+    .gps-ok { color: #34a853; }
+
+    .loading { text-align: center; padding: 20px; color: #888; }
+    .spinner {
+      border: 3px solid #f3f3f3; border-top: 3px solid #1a73e8;
+      border-radius: 50%; width: 30px; height: 30px;
+      animation: spin 0.8s linear infinite; margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .photo-preview {
+      width: 80px; height: 80px; border-radius: 50%;
+      object-fit: cover; border: 3px solid #1a73e8;
+      display: none; margin: 10px auto;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📋 ระบบเช็คอิน</h1>
+  <p id="company-name"></p>
+</div>
+
+<div class="container">
+
+  <!-- STEP 1: สแกน QR -->
+  <div class="step active" id="step-qr">
+    <div class="card">
+      <h2>📷 Step 1: สแกน QR สถานที่</h2>
+      <div id="qr-reader"></div>
+      <p style="text-align:center; margin-top:12px; color:#888; font-size:0.85rem">
+        เล็งกล้องไปที่ QR Code ของจุดเช็คอิน
+      </p>
+    </div>
+  </div>
+
+  <!-- STEP 2: กรอก PIN -->
+  <div class="step" id="step-login">
+    <div class="card">
+      <div class="location-badge" id="location-display">📍 กำลังโหลด...</div>
+      <h2>👤 Step 2: ยืนยันตัวตน</h2>
+      <input type="text"     id="emp-id"  placeholder="รหัสพนักงาน" inputmode="numeric">
+      <input type="password" id="emp-pin" placeholder="PIN 4 หลัก" maxlength="4" inputmode="numeric">
+      <button class="btn btn-primary"   onclick="verifyEmployee()">ยืนยัน →</button>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="resetToQR()">← สแกนใหม่</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: ถ่ายรูป Selfie -->
+  <div class="step" id="step-selfie">
+    <div class="card">
+      <h2>🤳 Step 3: ถ่ายรูปยืนยัน</h2>
+      <div class="employee-info">
+        <p>พนักงาน</p>
+        <strong id="emp-name-display">-</strong>
+      </div>
+      <video id="selfie-preview" autoplay playsinline muted></video>
+      <canvas id="selfie-canvas"></canvas>
+      <img id="selfie-result" class="photo-preview">
+      <div class="gps-status" id="gps-status">📡 กำลังระบุตำแหน่ง...</div>
+      <div style="margin-top:12px">
+        <button class="btn btn-primary"   id="capture-btn" onclick="capturePhoto()">📸 ถ่ายรูป</button>
+        <button class="btn btn-secondary" id="retake-btn"  onclick="retakePhoto()" style="margin-top:8px; display:none">🔄 ถ่ายใหม่</button>
+      </div>
+    </div>
+
+    <div class="card" id="action-card" style="display:none">
+      <h2>✅ Step 4: เลือกประเภท</h2>
+      <div class="action-buttons">
+        <button class="btn btn-success" onclick="submitCheckIn('checkin')">🟢 เข้างาน</button>
+        <button class="btn btn-danger"  onclick="submitCheckIn('checkout')">🔴 ออกงาน</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: ผลลัพธ์ -->
+  <div class="step" id="step-result">
+    <div class="card" style="text-align:center">
+      <div id="result-icon" style="font-size:4rem; margin-bottom:16px">✅</div>
+      <h2 style="justify-content:center" id="result-title">สำเร็จ!</h2>
+      <div class="status-box status-success" id="result-box" style="margin-top:16px">
+        <p id="result-message"></p>
+        <p id="result-time" style="margin-top:8px; font-size:0.85rem"></p>
+      </div>
+      <img id="result-photo" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #34a853;margin:12px auto;display:none">
+      <button class="btn btn-primary" onclick="resetToQR()" style="margin-top:16px">🔄 เช็คอินใหม่</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="step" id="step-loading">
+    <div class="card">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p id="loading-text">กำลังบันทึกข้อมูล...</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── INIT ─────────────────────────────────────
+  let currentLocation     = null;
+  let currentEmployee     = null;
+  let capturedPhotoBase64 = null;
+  let currentGPS          = null;
+  let selfieStream        = null;
+  let html5QrCode         = null;
+
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('company-name').textContent = CONFIG.COMPANY_NAME;
+    startQRScanner();
+  });
+
+  function showStep(stepId) {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById(stepId).classList.add('active');
+  }
+
+  // ── QR SCANNER ──────────────────────────────
+  function startQRScanner() {
+    html5QrCode = new Html5Qrcode("qr-reader");
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      onQRSuccess, () => {}
+    ).catch(err => {
+      document.getElementById('qr-reader').innerHTML =
+        '<p style="padding:20px;text-align:center;color:#ea4335">❌ ไม่สามารถเปิดกล้องได้<br><small>' + err + '</small></p>';
+    });
+  }
+
+  function onQRSuccess(decodedText) {
+    try {
+      const locationData = JSON.parse(decodedText);
+      if (locationData.locationId && locationData.locationName) {
+        currentLocation = locationData;
+        html5QrCode.stop().then(() => {
+          document.getElementById('location-display').textContent = '📍 ' + locationData.locationName;
+          showStep('step-login');
+        });
+      }
+    } catch(e) {}
+  }
+
+  // ── VERIFY EMPLOYEE ─────────────────────────
+  function verifyEmployee() {
+    const empId = document.getElementById('emp-id').value.trim();
+    const pin   = document.getElementById('emp-pin').value.trim();
+    if (!empId || !pin) { alert('กรุณากรอกรหัสพนักงานและ PIN'); return; }
+    currentEmployee = { id: empId, pin: pin, name: '' };
+    document.getElementById('emp-name-display').textContent = 'รหัส: ' + empId;
+    showStep('step-selfie');
+    startSelfieCamera();
+    getGPS();
+  }
+
+  // ── GPS ─────────────────────────────────────
+  function getGPS() {
+    if (!navigator.geolocation) {
+      document.getElementById('gps-status').textContent = '⚠️ เบราว์เซอร์ไม่รองรับ GPS';
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        currentGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        document.getElementById('gps-status').innerHTML =
+          '<span class="gps-ok">✅ ระบุตำแหน่งสำเร็จ (' +
+          currentGPS.lat.toFixed(5) + ', ' + currentGPS.lng.toFixed(5) + ')</span>';
+      },
+      () => { document.getElementById('gps-status').textContent = '⚠️ ไม่สามารถระบุตำแหน่งได้'; },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  // ── SELFIE ───────────────────────────────────
+  async function startSelfieCamera() {
+    try {
+      selfieStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 }, audio: false
+      });
+      document.getElementById('selfie-preview').srcObject = selfieStream;
+    } catch(err) {
+      alert('ไม่สามารถเปิดกล้องได้: ' + err.message);
+    }
+  }
+
+  function capturePhoto() {
+    const video  = document.getElementById('selfie-preview');
+    const canvas = document.getElementById('selfie-canvas');
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    capturedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.6);
+
+    const resultImg = document.getElementById('selfie-result');
+    resultImg.src = capturedPhotoBase64;
+    resultImg.style.display = 'block';
+
+    if (selfieStream) selfieStream.getTracks().forEach(t => t.stop());
+    document.getElementById('selfie-preview').style.display = 'none';
+    document.getElementById('capture-btn').style.display    = 'none';
+    document.getElementById('retake-btn').style.display     = 'block';
+    document.getElementById('action-card').style.display    = 'block';
+  }
+
+  function retakePhoto() {
+    capturedPhotoBase64 = null;
+    document.getElementById('selfie-result').style.display  = 'none';
+    document.getElementById('selfie-preview').style.display = 'block';
+    document.getElementById('capture-btn').style.display    = 'block';
+    document.getElementById('retake-btn').style.display     = 'none';
+    document.getElementById('action-card').style.display    = 'none';
+    startSelfieCamera();
+  }
+
+  // ── SUBMIT ───────────────────────────────────
+  async function submitCheckIn(actionType) {
+    if (!capturedPhotoBase64) { alert('กรุณาถ่ายรูปก่อน'); return; }
+    showStep('step-loading');
+
+    try {
+      const photoUrl = await uploadPhoto(capturedPhotoBase64);
+      const payload  = {
+        action:       actionType,
+        employeeId:   currentEmployee.id,
+        pin:          currentEmployee.pin,
+        locationId:   currentLocation.locationId,
+        locationName: currentLocation.locationName,
+        latitude:     currentGPS ? currentGPS.lat : null,
+        longitude:    currentGPS ? currentGPS.lng : null,
+        photoUrl:     photoUrl
+      };
+      const response = await fetch(CONFIG.API_URL, { method: 'POST', body: JSON.stringify(payload) });
+      const result   = await response.json();
+      showResult(result.success, result, actionType);
+    } catch(err) {
+      showResult(false, { message: 'เกิดข้อผิดพลาด: ' + err.message }, actionType);
+    }
+  }
+
+  async function uploadPhoto(base64) {
+    try {
+      const res    = await fetch(CONFIG.API_URL, { method: 'POST', body: JSON.stringify({ action: 'uploadPhoto', photo: base64 }) });
+      const result = await res.json();
+      return result.url || '';
+    } catch(e) { return ''; }
+  }
+
+  // ── RESULT ───────────────────────────────────
+  function showResult(success, result, actionType) {
+    showStep('step-result');
+    const box   = document.getElementById('result-box');
+    const icon  = document.getElementById('result-icon');
+    const title = document.getElementById('result-title');
+
+    if (success) {
+      icon.textContent  = actionType === 'checkin' ? '🟢' : '🔴';
+      title.textContent = actionType === 'checkin' ? 'เช็คอินสำเร็จ!' : 'เช็คเอาท์สำเร็จ!';
+      box.className     = 'status-box status-success';
+      document.getElementById('result-message').textContent = 'สวัสดี ' + (result.employeeName || currentEmployee.id);
+      document.getElementById('result-time').textContent    = '🕐 ' + new Date().toLocaleString('th-TH');
+      if (capturedPhotoBase64) {
+        const photo = document.getElementById('result-photo');
+        photo.src = capturedPhotoBase64; photo.style.display = 'block';
+      }
+    } else {
+      icon.textContent  = '❌';
+      title.textContent = 'ไม่สำเร็จ';
+      box.className     = 'status-box status-error';
+      document.getElementById('result-message').textContent = result.message || 'เกิดข้อผิดพลาด';
+      document.getElementById('result-time').textContent    = '';
+    }
+  }
+
+  // ── RESET ────────────────────────────────────
+  function resetToQR() {
+    currentLocation = null; currentEmployee = null;
+    capturedPhotoBase64 = null; currentGPS = null;
+    if (selfieStream) selfieStream.getTracks().forEach(t => t.stop());
+    document.getElementById('emp-id').value                 = '';
+    document.getElementById('emp-pin').value                = '';
+    document.getElementById('selfie-result').style.display  = 'none';
+    document.getElementById('selfie-preview').style.display = 'block';
+    document.getElementById('capture-btn').style.display    = 'block';
+    document.getElementById('retake-btn').style.display     = 'none';
+    document.getElementById('action-card').style.display    = 'none';
+    showStep('step-qr');
+    startQRScanner();
+  }
+</script>
+</body>
+</html>      width: 100%; padding: 14px;
       border: 2px solid #e0e0e0; border-radius: 10px;
       font-size: 1rem; margin-bottom: 12px; transition: border-color 0.2s;
     }
